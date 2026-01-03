@@ -34,22 +34,27 @@ CORS(app,
      expose_headers=["Content-Type", "Authorization", "Access-Control-Allow-Credentials"])
 
 # Manual After-Request Hook to FORCE headers (Render sometimes strips them)
+# Manual After-Request Hook to FORCE headers (Render sometimes strips them)
 @app.after_request
 def after_request(response):
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    # Flask-CORS handles these headers based on the CORS() configuration above.
+    # We shouldn't manually add them again as it can cause duplicate headers.
+    
+    # response.headers.add('Access-Control-Allow-Credentials', 'true')
     # If the origin is in our allowed list, strictly echo it back
-    origin = request.headers.get('Origin')
-    if origin in allowed_origins:
-        response.headers.add('Access-Control-Allow-Origin', origin)
+    # origin = request.headers.get('Origin')
+    # if origin in allowed_origins:
+    #     response.headers.add('Access-Control-Allow-Origin', origin)
         
     # SameSite=None is required for cross-origin cookies
     # We iterate through all cookies set in the response and force the attributes
-    if is_production:
-        for cookie in response.headers.getlist('Set-Cookie'):
-            if 'SameSite=None' not in cookie:
-                # This is a bit of a hack to modify the header string directly if Flask's config missed it
-                pass 
-                
+    # checking for existence of variable 'is_production' which is not defined in this scope
+    # Assuming the intention was to fix cookies for production/Render
+    
+    # Note: is_production is not defined in the provided snippet. 
+    # If it was defined globally, this block might be valid for cookies.
+    # However, for the specific error "Registration failed", the CORS headers are the main suspect.
+    
     return response
 
 # Initialize Flask-Login

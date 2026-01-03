@@ -11,6 +11,11 @@ DB_PATH = os.path.join(os.path.dirname(__file__), 'users.db')
 
 def init_db():
     """Initialize the users database"""
+    # Ensure directory exists for persistent storage volume if mounted
+    db_dir = os.path.dirname(DB_PATH)
+    if not os.path.exists(db_dir):
+        os.makedirs(db_dir)
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
@@ -71,6 +76,9 @@ def register():
     username = data.get('username')
     email = data.get('email')
     password = data.get('password')
+    
+    # Ensure DB is initialized before first write (Render ephemeral storage fix)
+    init_db()
     
     # Validation
     if not username or not email or not password:
