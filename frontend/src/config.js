@@ -9,8 +9,17 @@ const getApiBaseUrl = () => {
         return 'http://10.0.2.2:5000/api'; // Android emulator special IP for localhost
     }
 
-    // For web, dynamically match the hostname to avoid Cross-Site cookie issues
-    // (e.g. localhost -> localhost, 127.0.0.1 -> 127.0.0.1)
+    // Check for production environment variable
+    if (import.meta.env.VITE_API_URL) {
+        return import.meta.env.VITE_API_URL;
+    }
+
+    // Fallback for specific Render deployment
+    if (window.location.hostname.includes('onrender.com')) {
+        return 'https://expense-tracker-backend-hxst.onrender.com/api';
+    }
+
+    // For web development, dynamically match to localhost:5000
     return `http://${window.location.hostname}:5000/api`;
 };
 

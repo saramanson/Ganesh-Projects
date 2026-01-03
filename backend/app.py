@@ -12,16 +12,15 @@ from groups_api import groups_bp
 from auth import auth_bp, get_user_by_id
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'  # Change this in production!
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
+app.config['SESSION_COOKIE_SAMESITE'] = 'None' # Required for cross-site (frontend -> backend on different subdomains)
+app.config['SESSION_COOKIE_SECURE'] = True  # Required for SameSite=None
 
-CORS(app, supports_credentials=True, origins=[
-    'http://localhost:3000', 
-    'http://127.0.0.1:3000',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173'
-])
+# Get allowed origins from environment variable or default to local development
+# Get allowed origins from environment variable or default to local development + specific Render frontend
+allowed_origins = os.environ.get('ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,https://expense-tracker-frontend-hys6.onrender.com').split(',')
+
+CORS(app, supports_credentials=True, origins=allowed_origins)
 
 # Initialize Flask-Login
 login_manager = LoginManager()
