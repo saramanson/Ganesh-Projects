@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { login } from '../api';
 import './Auth.css';
 
-function Login({ onLoginSuccess, onSwitchToRegister }) {
+function Login({ onLoginSuccess, onSwitchToRegister, onSwitchToReset }) {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -60,6 +60,16 @@ function Login({ onLoginSuccess, onSwitchToRegister }) {
                             placeholder="Enter your password"
                             required
                         />
+                        <div style={{ textAlign: 'right', marginTop: '5px' }}>
+                            <button
+                                type="button"
+                                onClick={onSwitchToReset}
+                                className="link-button"
+                                style={{ fontSize: '0.9em' }}
+                            >
+                                Forgot Password?
+                            </button>
+                        </div>
                     </div>
 
                     <button type="submit" className="auth-button" disabled={loading}>

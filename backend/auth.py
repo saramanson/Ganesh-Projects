@@ -7,14 +7,15 @@ import os
 auth_bp = Blueprint('auth', __name__)
 
 # Database setup
-DB_PATH = os.path.join(os.path.dirname(__file__), 'users.db')
+# Use the same storage directory as app.py for persistence
+STORAGE_DIR = os.path.join(os.path.dirname(__file__), 'storage')
+DB_PATH = os.path.join(STORAGE_DIR, 'users.db')
 
 def init_db():
     """Initialize the users database"""
-    # Ensure directory exists for persistent storage volume if mounted
-    db_dir = os.path.dirname(DB_PATH)
-    if not os.path.exists(db_dir):
-        os.makedirs(db_dir)
+    # Ensure storage directory exists
+    if not os.path.exists(STORAGE_DIR):
+        os.makedirs(STORAGE_DIR)
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -194,3 +195,45 @@ def check_auth():
             }
         }), 200
     return jsonify({'authenticated': False}), 200
+
+@auth_bp.route('/api/auth/reset-password', methods=['POST'])
+def reset_password():
+    """Reset user password"""
+    data = request.get_json()
+    username = data.get('username')
+    email = data.get('email')
+    new_password = data.get('newPassword')
+    
+    if not username or not email or not new_password:
+        return jsonify({'error': 'All fields are required'}), 400
+    
+    if len(new_password) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+        
+    # Verify user exists and email matches
+    user_data = get_user_by_username(username)
+    if not user_data:
+        return jsonify({'error': 'User not found'}), 404
+        
+    user_id, db_username, db_email, _ = user_data
+    
+    if db_email != email:
+        return jsonify({'error': 'Email does not match our records'}), 401
+        
+    # Hash new password
+    password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+    
+    # Update password in database
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            'UPDATE users SET password_hash = ? WHERE id = ?',
+            (password_hash, user_id)
+        )
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'message': 'Password reset successful. You can now login.'}), 200
+    except Exception as e:
+        return jsonify({'error': f'Failed to reset password: {str(e)}'}), 500

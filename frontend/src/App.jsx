@@ -8,6 +8,7 @@ import ExpenseChart from './components/ExpenseChart';
 import Groups from './components/Groups';
 import Login from './components/Login';
 import Register from './components/Register';
+import ResetPassword from './components/ResetPassword';
 import './index.css';
 
 function App() {
@@ -155,12 +156,20 @@ function App() {
         <Login
           onLoginSuccess={handleLoginSuccess}
           onSwitchToRegister={() => setAuthView('register')}
+          onSwitchToReset={() => setAuthView('reset')}
         />
       );
-    } else {
+    } else if (authView === 'register') {
       return (
         <Register
           onRegisterSuccess={handleRegisterSuccess}
+          onSwitchToLogin={() => setAuthView('login')}
+        />
+      );
+    } else if (authView === 'reset') {
+      return (
+        <ResetPassword
+          onResetSuccess={() => setAuthView('login')}
           onSwitchToLogin={() => setAuthView('login')}
         />
       );

@@ -17,6 +17,11 @@ export const login = async (username, password) => {
     return response.data;
 };
 
+export const resetPassword = async (username, email, newPassword) => {
+    const response = await axios.post(`${API_URL}/auth/reset-password`, { username, email, newPassword });
+    return response.data;
+};
+
 export const logout = async () => {
     const response = await axios.post(`${API_URL}/auth/logout`);
     return response.data;
