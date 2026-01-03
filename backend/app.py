@@ -19,15 +19,8 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-change-
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 # Secure Cookie Settings - Critical for Cross-Site (Frontend vs Backend domains)
-# We force these settings if we detect we are running on Render (SECRET_KEY should be set)
-is_production = os.environ.get('RENDER') or os.environ.get('SECRET_KEY') != 'your-secret-key-change-in-production'
-
-if is_production:
-    app.config['SESSION_COOKIE_SAMESITE'] = 'None'
-    app.config['SESSION_COOKIE_SECURE'] = True
-else:
-    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-    app.config['SESSION_COOKIE_SECURE'] = False
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SECURE'] = True
 
 # Get allowed origins from environment variable or default to local development
 # Get allowed origins from environment variable or default to local development + specific Render frontend
@@ -42,6 +35,8 @@ login_manager.login_view = 'auth.login'
 
 @login_manager.unauthorized_handler
 def unauthorized():
+    print(f"DEBUG: Unauthorized access. Headers: {request.headers}")
+    print(f"DEBUG: Cookies: {request.cookies}")
     return jsonify({'error': 'Unauthorized', 'message': 'Please log in again'}), 401
 
 @login_manager.user_loader
