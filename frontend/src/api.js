@@ -1,10 +1,10 @@
 import axios from 'axios';
 import { API_BASE_URL } from './config';
 
-const API_URL = https://expense-tracker-backend-hxst.onrender.com/api;
+const API_URL = 'https://expense-tracker-backend-hxst.onrender.com/api';
 
-    // Configure axios to send credentials (cookies) with requests
-    axios.defaults.withCredentials = true;
+// Configure axios to send credentials (cookies) with requests
+axios.defaults.withCredentials = true;
 
 // Authentication API
 export const register = async (username, email, password) => {
