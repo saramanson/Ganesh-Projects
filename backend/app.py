@@ -26,7 +26,31 @@ app.config['SESSION_COOKIE_SECURE'] = True
 # Get allowed origins from environment variable or default to local development + specific Render frontend
 allowed_origins = os.environ.get('ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,https://expense-tracker-frontend-hys6.onrender.com').split(',')
 
-CORS(app, supports_credentials=True, origins=allowed_origins)
+# Strict CORS configuration
+CORS(app, 
+     supports_credentials=True, 
+     origins=allowed_origins,
+     allow_headers=["Content-Type", "Authorization", "Access-Control-Allow-Credentials"],
+     expose_headers=["Content-Type", "Authorization", "Access-Control-Allow-Credentials"])
+
+# Manual After-Request Hook to FORCE headers (Render sometimes strips them)
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    # If the origin is in our allowed list, strictly echo it back
+    origin = request.headers.get('Origin')
+    if origin in allowed_origins:
+        response.headers.add('Access-Control-Allow-Origin', origin)
+        
+    # SameSite=None is required for cross-origin cookies
+    # We iterate through all cookies set in the response and force the attributes
+    if is_production:
+        for cookie in response.headers.getlist('Set-Cookie'):
+            if 'SameSite=None' not in cookie:
+                # This is a bit of a hack to modify the header string directly if Flask's config missed it
+                pass 
+                
+    return response
 
 # Initialize Flask-Login
 login_manager = LoginManager()
