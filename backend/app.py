@@ -8,13 +8,26 @@ import json
 import uuid
 from datetime import datetime
 from werkzeug.utils import secure_filename
+from werkzeug.middleware.proxy_fix import ProxyFix
 from groups_api import groups_bp
 from auth import auth_bp, get_user_by_id
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
-app.config['SESSION_COOKIE_SAMESITE'] = 'None' # Required for cross-site (frontend -> backend on different subdomains)
-app.config['SESSION_COOKIE_SECURE'] = True  # Required for SameSite=None
+
+# ProxyFix is required for Render to properly detect HTTPS
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
+# Secure Cookie Settings - Critical for Cross-Site (Frontend vs Backend domains)
+# We force these settings if we detect we are running on Render (SECRET_KEY should be set)
+is_production = os.environ.get('RENDER') or os.environ.get('SECRET_KEY') != 'your-secret-key-change-in-production'
+
+if is_production:
+    app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+    app.config['SESSION_COOKIE_SECURE'] = True
+else:
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['SESSION_COOKIE_SECURE'] = False
 
 # Get allowed origins from environment variable or default to local development
 # Get allowed origins from environment variable or default to local development + specific Render frontend
