@@ -18,9 +18,19 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-change-
 # ProxyFix is required for Render to properly detect HTTPS
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
-# Secure Cookie Settings - Critical for Cross-Site (Frontend vs Backend domains)
-app.config['SESSION_COOKIE_SAMESITE'] = 'None'
-app.config['SESSION_COOKIE_SECURE'] = True
+# Determine if we are in a production environment
+# Render sets 'RENDER' environment variable
+is_production = os.environ.get('RENDER') or os.environ.get('FLASK_ENV') == 'production'
+
+# Secure Cookie Settings
+# Localhost (HTTP) requires Secure=False and SameSite=Lax (or None but Secure=True is flaky on HTTP)
+# Production (HTTPS/Cross-site) requires Secure=True and SameSite=None
+if is_production:
+    app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+    app.config['SESSION_COOKIE_SECURE'] = True
+else:
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['SESSION_COOKIE_SECURE'] = False
 
 # Get allowed origins from environment variable or default to local development
 # Get allowed origins from environment variable or default to local development + specific Render frontend
