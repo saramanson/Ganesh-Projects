@@ -39,13 +39,21 @@ else:
 
 # Get allowed origins from environment variable or default to local development
 # Get allowed origins from environment variable or default to local development + specific Render frontend
-allowed_origins = os.environ.get('ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,https://expense-tracker-frontend-hys6.onrender.com').split(',')
-
 # Strict CORS configuration
+# Explicitly list allowed origins to prevent parsing errors
+# Note: Render URLs must not have trailing slashes
+allowed_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://expense-tracker-frontend-hys6.onrender.com"
+]
+
 CORS(app, 
      supports_credentials=True, 
      origins=allowed_origins,
-     allow_headers=["Content-Type", "Authorization", "Access-Control-Allow-Credentials"],
+     allow_headers=["Content-Type", "Authorization"],
      expose_headers=["Content-Type", "Authorization", "Access-Control-Allow-Credentials"])
 
 # Manual After-Request Hook to FORCE headers (Render sometimes strips them)

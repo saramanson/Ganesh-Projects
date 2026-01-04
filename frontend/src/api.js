@@ -5,7 +5,7 @@ const API_URL = API_BASE_URL;
 
 // Configure axios to send credentials (cookies) with requests
 axios.defaults.withCredentials = true;
-axios.defaults.timeout = 5000; // 5 seconds timeout
+axios.defaults.timeout = 60000; // 60 seconds timeout (Render Free Tier Cold Start)
 
 // Authentication API
 export const register = async (username, email, password) => {

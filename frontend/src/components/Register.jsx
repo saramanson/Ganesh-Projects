@@ -38,7 +38,9 @@ function Register({ onRegisterSuccess, onSwitchToLogin }) {
             onRegisterSuccess(response.user);
         } catch (err) {
             console.error('Registration error:', err);
-            setError(err.response?.data?.error || 'Registration failed. Please try again.');
+            // Check for specific server error, otherwise fallback to exception message (e.g. timeout/network), then generic
+            const errorMessage = err.response?.data?.error || err.message || 'Registration failed. Please try again.';
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }
