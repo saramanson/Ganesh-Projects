@@ -1,73 +1,10 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, unset_jwt_cookies
 import bcrypt
-import sqlite3
 import os
+from models import db, User
 
 auth_bp = Blueprint('auth', __name__)
-
-# Database setup
-# Use the same storage directory as app.py for persistence
-STORAGE_DIR = os.path.join(os.path.dirname(__file__), 'storage')
-DB_PATH = os.path.join(STORAGE_DIR, 'users.db')
-
-def init_db():
-    # Ensure storage directory exists
-    if not os.path.exists(STORAGE_DIR):
-        os.makedirs(STORAGE_DIR)
-
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-# Initialize database on module load
-init_db()
-
-class User:
-    def __init__(self, id, username, email):
-        self.id = id
-        self.username = username
-        self.email = email
-
-def get_user_by_id(user_id):
-    """Get user by ID"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, username, email FROM users WHERE id = ?', (user_id,))
-    user_data = cursor.fetchone()
-    conn.close()
-    
-    if user_data:
-        return User(user_data[0], user_data[1], user_data[2])
-    return None
-
-def get_user_by_username(username):
-    """Get user by username"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, username, email, password_hash FROM users WHERE username = ?', (username,))
-    user_data = cursor.fetchone()
-    conn.close()
-    return user_data
-
-def get_user_by_email(email):
-    """Get user by email"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, username, email FROM users WHERE email = ?', (email,))
-    user_data = cursor.fetchone()
-    conn.close()
-    return user_data
 
 @auth_bp.route('/api/auth/register', methods=['POST'])
 def register():
@@ -76,9 +13,6 @@ def register():
     username = data.get('username')
     email = data.get('email')
     password = data.get('password')
-    
-    # Ensure DB is initialized before first write (Render ephemeral storage fix)
-    init_db()
     
     # Validation
     if not username or not email or not password:
@@ -91,43 +25,35 @@ def register():
         return jsonify({'error': 'Password must be at least 6 characters'}), 400
     
     # Check if user already exists
-    if get_user_by_username(username):
+    if User.query.filter_by(username=username).first():
         return jsonify({'error': 'Username already exists'}), 400
     
-    if get_user_by_email(email):
+    if User.query.filter_by(email=email).first():
         return jsonify({'error': 'Email already exists'}), 400
     
     # Hash password
-    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     
     # Insert user into database
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)',
-            (username, email, password_hash)
-        )
-        conn.commit()
-        user_id = cursor.lastrowid
-        conn.close()
+        new_user = User(username=username, email=email, password_hash=password_hash)
+        db.session.add(new_user)
+        db.session.commit()
         
-        # Create user object
-        user = User(user_id, username, email)
-        
-        # Generate JWT Token
-        access_token = create_access_token(identity=str(user.id))
+        # Generate JWT Token (Identity must be string)
+        access_token = create_access_token(identity=str(new_user.id))
         
         return jsonify({
             'message': 'Registration successful',
             'token': access_token,
             'user': {
-                'id': user.id,
-                'username': user.username,
-                'email': user.email
+                'id': new_user.id,
+                'username': new_user.username,
+                'email': new_user.email
             }
         }), 201
     except Exception as e:
+        db.session.rollback()
         return jsonify({'error': f'Registration failed: {str(e)}'}), 500
 
 @auth_bp.route('/api/auth/login', methods=['POST'])
@@ -141,20 +67,15 @@ def login():
         return jsonify({'error': 'Username and password are required'}), 400
     
     # Get user from database
-    user_data = get_user_by_username(username)
+    user = User.query.filter_by(username=username).first()
     
-    if not user_data:
+    if not user:
         # Avoid user enumeration, but basic check for now
         return jsonify({'error': 'Invalid username or password'}), 401
     
-    user_id, username, email, password_hash = user_data
-    
-    # Verify password
-    if not bcrypt.checkpw(password.encode('utf-8'), password_hash):
+    # Verify password (encode string to bytes for bcrypt)
+    if not bcrypt.checkpw(password.encode('utf-8'), user.password_hash.encode('utf-8')):
         return jsonify({'error': 'Invalid username or password'}), 401
-    
-    # Create user object
-    user = User(user_id, username, email)
     
     # Generate JWT Token
     access_token = create_access_token(identity=str(user.id))
@@ -172,9 +93,6 @@ def login():
 @auth_bp.route('/api/auth/logout', methods=['POST'])
 def logout():
     """Logout user"""
-    # Client side just needs to discard token. 
-    # With JWT cookies we'd unset them. 
-    # Here we can just return success, client clears localStorage.
     return jsonify({'message': 'Logout successful'}), 200
 
 @auth_bp.route('/api/auth/me', methods=['GET'])
@@ -182,7 +100,8 @@ def logout():
 def get_current_user():
     """Get current logged-in user"""
     current_user_id = get_jwt_identity()
-    user = get_user_by_id(current_user_id)
+    user = User.query.get(int(current_user_id))
+    
     if not user:
          return jsonify({'error': 'User not found'}), 404
          
@@ -200,7 +119,7 @@ def check_auth():
     """Check if user is authenticated"""
     current_user_id = get_jwt_identity()
     if current_user_id:
-        user = get_user_by_id(current_user_id)
+        user = User.query.get(int(current_user_id))
         if user:
             return jsonify({
                 'authenticated': True,
@@ -227,29 +146,21 @@ def reset_password():
         return jsonify({'error': 'Password must be at least 6 characters'}), 400
         
     # Verify user exists and email matches
-    user_data = get_user_by_username(username)
-    if not user_data:
+    user = User.query.filter_by(username=username).first()
+    if not user:
         return jsonify({'error': 'User not found'}), 404
         
-    user_id, db_username, db_email, _ = user_data
-    
-    if db_email != email:
+    if user.email != email:
         return jsonify({'error': 'Email does not match our records'}), 401
         
     # Hash new password
-    password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+    password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     
     # Update password in database
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            'UPDATE users SET password_hash = ? WHERE id = ?',
-            (password_hash, user_id)
-        )
-        conn.commit()
-        conn.close()
-        
+        user.password_hash = password_hash
+        db.session.commit()
         return jsonify({'message': 'Password reset successful. You can now login.'}), 200
     except Exception as e:
+        db.session.rollback()
         return jsonify({'error': f'Failed to reset password: {str(e)}'}), 500

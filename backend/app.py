@@ -10,13 +10,25 @@ from datetime import datetime
 from werkzeug.utils import secure_filename
 from werkzeug.middleware.proxy_fix import ProxyFix
 from groups_api import groups_bp
-from auth import auth_bp, get_user_by_id
+from auth import auth_bp
+from models import db
 
 app = Flask(__name__)
 # Secret key is critical for JWT signing
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', app.config['SECRET_KEY'])
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 24 * 3600 # 1 day
+
+# Database Configuration
+# Use DATABASE_URL environment variable if set (Render), otherwise use local SQLite
+database_url = os.environ.get('DATABASE_URL', 'sqlite:///storage/users.db')
+
+# Fix for Render's postgres URL starting with postgres:// instead of postgresql://
+if database_url.startswith('postgres://'):
+    database_url = database_url.replace('postgres://', 'postgresql://', 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # ProxyFix is required for Render to properly detect HTTPS
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
@@ -40,11 +52,20 @@ CORS(app,
 # Initialize JWT
 jwt = JWTManager(app)
 
+# Initialize SQLAlchemy
+db.init_app(app)
+
+# Create tables
+with app.app_context():
+    # Ensure storage directory exists for SQLite fallback
+    STORAGE_DIR = os.path.join(os.path.dirname(__file__), 'storage')
+    if not os.path.exists(STORAGE_DIR):
+        os.makedirs(STORAGE_DIR)
+    
+    db.create_all()
+
 # Register blueprints
 app.register_blueprint(auth_bp)
-# app.register_blueprint(groups_bp) # Temporarily disabled if groups_bp depends on flask-login
-# If groups_bp uses login_required, it will crash. 
-# We'll need to fix groups_api.py too or disable it. For now, let's keep it but user might see errors if they use Groups.
 app.register_blueprint(groups_bp)
 
 STORAGE_DIR = os.path.join(os.path.dirname(__file__), 'storage')

@@ -2,5 +2,7 @@ flask
 flask-cors
 flask-login
 flask-jwt-extended
+flask-sqlalchemy
+psycopg2-binary
 bcrypt
 gunicorn
