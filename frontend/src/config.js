@@ -19,7 +19,13 @@ const getApiBaseUrl = () => {
         return 'https://expense-tracker-backend-hxst.onrender.com/api';
     }
 
-    // For web development, dynamically match to localhost:5000
+    // For web development (local), use relative path to leverage Vite Proxy
+    // This avoids CORS/Cookie issues by treating backend as same-origin
+    if (import.meta.env.DEV) {
+        return '/api';
+    }
+
+    // Default fallback for built local preview or other scenarios
     return `http://${window.location.hostname}:5000/api`;
 };
 
