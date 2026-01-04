@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify, send_from_directory, make_response
 import io
 import csv
 from flask_cors import CORS
-from flask_login import LoginManager, login_required, current_user
+from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 import os
 import json
 import uuid
@@ -13,35 +13,16 @@ from groups_api import groups_bp
 from auth import auth_bp, get_user_by_id
 
 app = Flask(__name__)
+# Secret key is critical for JWT signing
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', app.config['SECRET_KEY'])
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 24 * 3600 # 1 day
 
 # ProxyFix is required for Render to properly detect HTTPS
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
-# Secure Cookie Settings
-# Robust check for development vs production
-# If running in debug mode (local), force relaxed settings
-if app.debug:
-    is_production = False
-    print("DEBUG: Application running in debug mode. Using relaxed cookie settings.")
-else:
-    # Otherwise check environment variables
-    is_production = os.environ.get('RENDER') or os.environ.get('FLASK_ENV') == 'production'
-
-if is_production:
-    app.config['SESSION_COOKIE_SAMESITE'] = 'None'
-    app.config['SESSION_COOKIE_SECURE'] = True
-    print("DEBUG: Using PRODUCTION cookie settings (SameSite=None, Secure=True)")
-else:
-    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-    app.config['SESSION_COOKIE_SECURE'] = False
-    print("DEBUG: Using DEVELOPMENT cookie settings (SameSite=Lax, Secure=False)")
-
-# Get allowed origins from environment variable or default to local development
-# Get allowed origins from environment variable or default to local development + specific Render frontend
 # Strict CORS configuration
 # Explicitly list allowed origins to prevent parsing errors
-# Note: Render URLs must not have trailing slashes
 allowed_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -54,49 +35,16 @@ CORS(app,
      supports_credentials=True, 
      origins=allowed_origins,
      allow_headers=["Content-Type", "Authorization"],
-     expose_headers=["Content-Type", "Authorization", "Access-Control-Allow-Credentials"])
+     expose_headers=["Content-Type", "Authorization"])
 
-# Manual After-Request Hook to FORCE headers (Render sometimes strips them)
-# Manual After-Request Hook to FORCE headers (Render sometimes strips them)
-@app.after_request
-def after_request(response):
-    # Flask-CORS handles these headers based on the CORS() configuration above.
-    # We shouldn't manually add them again as it can cause duplicate headers.
-    
-    # response.headers.add('Access-Control-Allow-Credentials', 'true')
-    # If the origin is in our allowed list, strictly echo it back
-    # origin = request.headers.get('Origin')
-    # if origin in allowed_origins:
-    #     response.headers.add('Access-Control-Allow-Origin', origin)
-        
-    # SameSite=None is required for cross-origin cookies
-    # We iterate through all cookies set in the response and force the attributes
-    # checking for existence of variable 'is_production' which is not defined in this scope
-    # Assuming the intention was to fix cookies for production/Render
-    
-    # Note: is_production is not defined in the provided snippet. 
-    # If it was defined globally, this block might be valid for cookies.
-    # However, for the specific error "Registration failed", the CORS headers are the main suspect.
-    
-    return response
-
-# Initialize Flask-Login
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'auth.login'
-
-@login_manager.unauthorized_handler
-def unauthorized():
-    print(f"DEBUG: Unauthorized access. Headers: {request.headers}")
-    print(f"DEBUG: Cookies: {request.cookies}")
-    return jsonify({'error': 'Unauthorized', 'message': 'Please log in again'}), 401
-
-@login_manager.user_loader
-def load_user(user_id):
-    return get_user_by_id(user_id)
+# Initialize JWT
+jwt = JWTManager(app)
 
 # Register blueprints
 app.register_blueprint(auth_bp)
+# app.register_blueprint(groups_bp) # Temporarily disabled if groups_bp depends on flask-login
+# If groups_bp uses login_required, it will crash. 
+# We'll need to fix groups_api.py too or disable it. For now, let's keep it but user might see errors if they use Groups.
 app.register_blueprint(groups_bp)
 
 STORAGE_DIR = os.path.join(os.path.dirname(__file__), 'storage')
@@ -144,16 +92,17 @@ def save_transactions(year, transactions, user_id):
         json.dump(transactions, f, indent=4)
 
 @app.route('/api/transactions', methods=['GET'])
-@login_required
+@jwt_required()
 def get_transactions():
+    current_user_id = get_jwt_identity()
     all_transactions = []
-    user_dir = get_user_storage_dir(current_user.id)
+    user_dir = get_user_storage_dir(current_user_id)
     
     if os.path.exists(user_dir):
         for year_folder in os.listdir(user_dir):
             year_path = os.path.join(user_dir, year_folder)
             if os.path.isdir(year_path):
-                transactions = load_transactions(year_folder, current_user.id)
+                transactions = load_transactions(year_folder, current_user_id)
                 all_transactions.extend(transactions)
     
     # Sort by date descending
@@ -161,12 +110,15 @@ def get_transactions():
     return jsonify(all_transactions)
 
 @app.route('/api/transactions', methods=['POST'])
-@login_required
+@jwt_required()
 def add_transaction():
+    current_user_id = get_jwt_identity()
     print(f"DEBUG: Received add_transaction request. Content-Type: {request.content_type}")
-    print(f"DEBUG: Cookies received: {request.cookies}")
+    # Cookies not needed directly with JWT, but headers are interesting
+    print(f"DEBUG: Headers: {request.headers}")
+
     # Check if it's a multipart/form-data request (with file) or JSON
-    if request.content_type.startswith('multipart/form-data'):
+    if request.content_type and request.content_type.startswith('multipart/form-data'):
         description = request.form.get('description')
         amount = request.form.get('amount')
         type = request.form.get('type')
@@ -174,7 +126,8 @@ def add_transaction():
         category = request.form.get('category')
         image_file = request.files.get('image')
     else:
-        data = request.get_json()
+        # Gracefully handle form-data or JSON
+        data = request.get_json(silent=True) or {}
         description = data.get('description')
         amount = data.get('amount')
         type = data.get('type')
@@ -196,7 +149,7 @@ def add_transaction():
     if image_file:
         filename = secure_filename(image_file.filename)
         # Create images directory for the year if it doesn't exist
-        user_dir = get_user_storage_dir(current_user.id)
+        user_dir = get_user_storage_dir(current_user_id)
         images_dir = os.path.join(user_dir, year, 'images')
         if not os.path.exists(images_dir):
             os.makedirs(images_dir)
@@ -208,9 +161,9 @@ def add_transaction():
         image_file.save(save_path)
         
         # Store relative path: user_id/year/images/filename
-        image_path = f"user_{current_user.id}/{year}/images/{unique_filename}"
+        image_path = f"user_{current_user_id}/{year}/images/{unique_filename}"
 
-    transactions = load_transactions(year, current_user.id)
+    transactions = load_transactions(year, current_user_id)
     
     new_transaction = {
         'id': str(uuid.uuid4()),
@@ -224,7 +177,7 @@ def add_transaction():
     
     transactions.append(new_transaction)
     try:
-        save_transactions(year, transactions, current_user.id)
+        save_transactions(year, transactions, current_user_id)
         print(f"DEBUG: Successfully saved transaction {new_transaction['id']} to {year}")
     except Exception as e:
         print(f"DEBUG: Error saving transaction: {str(e)}")
@@ -233,26 +186,24 @@ def add_transaction():
     return jsonify(new_transaction), 201
 
 @app.route('/api/transactions/<id>', methods=['DELETE'])
-@login_required
+@jwt_required()
 def delete_transaction(id):
+    current_user_id = get_jwt_identity()
     # We need to find which year folder contains this transaction
-    user_dir = get_user_storage_dir(current_user.id)
+    user_dir = get_user_storage_dir(current_user_id)
     if os.path.exists(user_dir):
         for year_folder in os.listdir(user_dir):
             year_path = os.path.join(user_dir, year_folder)
             if os.path.isdir(year_path):
-                transactions = load_transactions(year_folder, current_user.id)
+                transactions = load_transactions(year_folder, current_user_id)
                 
                 # Filter out the transaction with the given ID
                 original_count = len(transactions)
                 
-                # Optional: Delete associated image file if we want to clean up
-                # For now, we'll keep it simple and just remove the record
-                
                 transactions = [t for t in transactions if t['id'] != id]
                 
                 if len(transactions) < original_count:
-                    save_transactions(year_folder, transactions, current_user.id)
+                    save_transactions(year_folder, transactions, current_user_id)
                     return jsonify({'message': 'Transaction deleted'})
 
     return jsonify({'error': 'Transaction not found'}), 404
@@ -262,15 +213,16 @@ def serve_storage(filename):
     return send_from_directory(STORAGE_DIR, filename)
 
 @app.route('/api/transactions/export', methods=['GET'])
-@login_required
+@jwt_required()
 def export_transactions():
+    current_user_id = get_jwt_identity()
     year = request.args.get('year')
     month = request.args.get('month')
     
     if not year:
         return jsonify({'error': 'Year is required'}), 400
         
-    transactions = load_transactions(year, current_user.id)
+    transactions = load_transactions(year, current_user_id)
     
     if month:
         # Filter by month (format YYYY-MM-DD where MM matches)

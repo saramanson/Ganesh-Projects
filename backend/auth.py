@@ -1,5 +1,5 @@
-from flask import Blueprint, request, jsonify, session
-from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, unset_jwt_cookies
 import bcrypt
 import sqlite3
 import os
@@ -12,7 +12,6 @@ STORAGE_DIR = os.path.join(os.path.dirname(__file__), 'storage')
 DB_PATH = os.path.join(STORAGE_DIR, 'users.db')
 
 def init_db():
-    """Initialize the users database"""
     # Ensure storage directory exists
     if not os.path.exists(STORAGE_DIR):
         os.makedirs(STORAGE_DIR)
@@ -34,7 +33,7 @@ def init_db():
 # Initialize database on module load
 init_db()
 
-class User(UserMixin):
+class User:
     def __init__(self, id, username, email):
         self.id = id
         self.username = username
@@ -113,12 +112,15 @@ def register():
         user_id = cursor.lastrowid
         conn.close()
         
-        # Create user object and log them in
+        # Create user object
         user = User(user_id, username, email)
-        login_user(user)
+        
+        # Generate JWT Token
+        access_token = create_access_token(identity=user.id)
         
         return jsonify({
             'message': 'Registration successful',
+            'token': access_token,
             'user': {
                 'id': user.id,
                 'username': user.username,
@@ -142,6 +144,7 @@ def login():
     user_data = get_user_by_username(username)
     
     if not user_data:
+        # Avoid user enumeration, but basic check for now
         return jsonify({'error': 'Invalid username or password'}), 401
     
     user_id, username, email, password_hash = user_data
@@ -150,12 +153,15 @@ def login():
     if not bcrypt.checkpw(password.encode('utf-8'), password_hash):
         return jsonify({'error': 'Invalid username or password'}), 401
     
-    # Create user object and log them in
+    # Create user object
     user = User(user_id, username, email)
-    login_user(user)
+    
+    # Generate JWT Token
+    access_token = create_access_token(identity=user.id)
     
     return jsonify({
         'message': 'Login successful',
+        'token': access_token,
         'user': {
             'id': user.id,
             'username': user.username,
@@ -164,36 +170,46 @@ def login():
     }), 200
 
 @auth_bp.route('/api/auth/logout', methods=['POST'])
-@login_required
 def logout():
     """Logout user"""
-    logout_user()
+    # Client side just needs to discard token. 
+    # With JWT cookies we'd unset them. 
+    # Here we can just return success, client clears localStorage.
     return jsonify({'message': 'Logout successful'}), 200
 
 @auth_bp.route('/api/auth/me', methods=['GET'])
-@login_required
+@jwt_required()
 def get_current_user():
     """Get current logged-in user"""
+    current_user_id = get_jwt_identity()
+    user = get_user_by_id(current_user_id)
+    if not user:
+         return jsonify({'error': 'User not found'}), 404
+         
     return jsonify({
         'user': {
-            'id': current_user.id,
-            'username': current_user.username,
-            'email': current_user.email
+            'id': user.id,
+            'username': user.username,
+            'email': user.email
         }
     }), 200
 
 @auth_bp.route('/api/auth/check', methods=['GET'])
+@jwt_required(optional=True)
 def check_auth():
     """Check if user is authenticated"""
-    if current_user.is_authenticated:
-        return jsonify({
-            'authenticated': True,
-            'user': {
-                'id': current_user.id,
-                'username': current_user.username,
-                'email': current_user.email
-            }
-        }), 200
+    current_user_id = get_jwt_identity()
+    if current_user_id:
+        user = get_user_by_id(current_user_id)
+        if user:
+            return jsonify({
+                'authenticated': True,
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email
+                }
+            }), 200
     return jsonify({'authenticated': False}), 200
 
 @auth_bp.route('/api/auth/reset-password', methods=['POST'])
