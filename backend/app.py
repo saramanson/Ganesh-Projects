@@ -20,12 +20,16 @@ app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', app.config['SECR
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 24 * 3600 # 1 day
 
 # Database Configuration
-# Use DATABASE_URL environment variable if set (Render), otherwise use local SQLite
-database_url = os.environ.get('DATABASE_URL', 'sqlite:///storage/users.db')
+basedir = os.path.abspath(os.path.dirname(__file__))
+# Use DATABASE_URL environment variable if set (Render), otherwise use local SQLite with absolute path
+default_db_path = 'sqlite:///' + os.path.join(basedir, 'storage', 'users.db')
+database_url = os.environ.get('DATABASE_URL', default_db_path)
 
 # Fix for Render's postgres URL starting with postgres:// instead of postgresql://
-if database_url.startswith('postgres://'):
+if database_url and database_url.startswith('postgres://'):
     database_url = database_url.replace('postgres://', 'postgresql://', 1)
+
+print(f"DEBUG: Connecting to database: {database_url.split(':')[0]}://...")
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
