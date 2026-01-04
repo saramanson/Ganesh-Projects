@@ -22,18 +22,31 @@ const AddTransaction = ({ onAdd }) => {
             return;
         }
 
-        const formData = new FormData();
-        formData.append('description', description);
         const cleanAmount = amount.toString().replace(/[$,]/g, '');
-        formData.append('amount', cleanAmount);
-        formData.append('type', type);
-        formData.append('date', date);
-        formData.append('category', category);
+
+        let transactionData;
+
         if (image) {
+            const formData = new FormData();
+            formData.append('description', description);
+            formData.append('amount', cleanAmount);
+            formData.append('type', type);
+            formData.append('date', date);
+            formData.append('category', category);
             formData.append('image', image);
+            transactionData = formData;
+        } else {
+            // Use JSON for simple transactions (more robust for CORS/Auth)
+            transactionData = {
+                description,
+                amount: cleanAmount,
+                type,
+                date,
+                category
+            };
         }
 
-        onAdd(formData);
+        onAdd(transactionData);
 
         if (onAdd) { // Ensure onAdd exists
             setDescription('');
