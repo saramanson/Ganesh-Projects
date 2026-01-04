@@ -18,19 +18,24 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-change-
 # ProxyFix is required for Render to properly detect HTTPS
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
-# Determine if we are in a production environment
-# Render sets 'RENDER' environment variable
-is_production = os.environ.get('RENDER') or os.environ.get('FLASK_ENV') == 'production'
-
 # Secure Cookie Settings
-# Localhost (HTTP) requires Secure=False and SameSite=Lax (or None but Secure=True is flaky on HTTP)
-# Production (HTTPS/Cross-site) requires Secure=True and SameSite=None
+# Robust check for development vs production
+# If running in debug mode (local), force relaxed settings
+if app.debug:
+    is_production = False
+    print("DEBUG: Application running in debug mode. Using relaxed cookie settings.")
+else:
+    # Otherwise check environment variables
+    is_production = os.environ.get('RENDER') or os.environ.get('FLASK_ENV') == 'production'
+
 if is_production:
     app.config['SESSION_COOKIE_SAMESITE'] = 'None'
     app.config['SESSION_COOKIE_SECURE'] = True
+    print("DEBUG: Using PRODUCTION cookie settings (SameSite=None, Secure=True)")
 else:
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_SECURE'] = False
+    print("DEBUG: Using DEVELOPMENT cookie settings (SameSite=Lax, Secure=False)")
 
 # Get allowed origins from environment variable or default to local development
 # Get allowed origins from environment variable or default to local development + specific Render frontend
