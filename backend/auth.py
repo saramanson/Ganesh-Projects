@@ -116,7 +116,7 @@ def register():
         user = User(user_id, username, email)
         
         # Generate JWT Token
-        access_token = create_access_token(identity=user.id)
+        access_token = create_access_token(identity=str(user.id))
         
         return jsonify({
             'message': 'Registration successful',
@@ -157,7 +157,7 @@ def login():
     user = User(user_id, username, email)
     
     # Generate JWT Token
-    access_token = create_access_token(identity=user.id)
+    access_token = create_access_token(identity=str(user.id))
     
     return jsonify({
         'message': 'Login successful',
