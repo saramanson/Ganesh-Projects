@@ -5,27 +5,25 @@ const getApiBaseUrl = () => {
         // For mobile, use your computer's local IP or deployed backend URL
         // Replace this with your actual backend URL when deployed
         // For local development, use your computer's IP address (not localhost)
-        // Example: return 'http://192.168.1.100:5000/api';
         return 'http://10.0.2.2:5000/api'; // Android emulator special IP for localhost
     }
 
-    // Check for production environment variable
+    // 1. Priority: Environment Variable (injected during build)
     if (import.meta.env.VITE_API_URL) {
         return import.meta.env.VITE_API_URL;
     }
 
-    // Fallback for specific Render deployment
+    // 2. Fallback for specific Render deployment (Legacy)
     if (window.location.hostname.includes('onrender.com')) {
         return 'https://expense-tracker-backend-hxst.onrender.com/api';
     }
 
-    // For web development (local), use relative path to leverage Vite Proxy
-    // This avoids CORS/Cookie issues by treating backend as same-origin
+    // 3. For web development (local), use relative path to leverage Vite Proxy
     if (import.meta.env.DEV) {
         return '/api';
     }
 
-    // Default fallback for built local preview or other scenarios
+    // 4. Default fallback for built local preview or other scenarios
     return `http://${window.location.hostname}:5000/api`;
 };
 
